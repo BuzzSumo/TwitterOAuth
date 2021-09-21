@@ -302,8 +302,8 @@ class Twitter
         $errorNumber = curl_errno($this->curl);
         $errorMessage = curl_error($this->curl);
 
-        // error?
-        if ($errorNumber != '') {
+        // error? 0 is OK (https://curl.se/libcurl/c/libcurl-errors.html)
+        if ($errorNumber !== 0) {
             throw new Exception($errorMessage, $errorNumber);
         }
 
