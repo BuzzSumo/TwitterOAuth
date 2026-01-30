@@ -307,6 +307,16 @@ class Twitter
             throw new Exception($errorMessage, $errorNumber);
         }
 
+        // check for JSON error response from the API
+        $json = @json_decode($response, true);
+        if (is_array($json) && isset($json['errors'])) {
+            $errorMessages = array();
+            foreach ($json['errors'] as $error) {
+                $errorMessages[] = isset($error['message']) ? $error['message'] : json_encode($error);
+            }
+            throw new Exception(implode(', ', $errorMessages));
+        }
+
         // init var
         $return = array();
 
@@ -335,7 +345,7 @@ class Twitter
     )
     {
         // allowed methods
-        $allowedMethods = array('GET', 'POST');
+        $allowedMethods = array('GET', 'POST', 'DELETE');
 
         // redefine
         $url = (string) $url;
@@ -411,6 +421,10 @@ class Twitter
 
             // enable post
             $options[CURLOPT_POST] = true;
+        } elseif ($method == 'DELETE') {
+            $options[CURLOPT_CUSTOMREQUEST] = 'DELETE';
+            // add the parameters into the querystring
+            if(!empty($parameters)) $url .= '?' . $this->buildQuery($parameters);
         } else {
             // add the parameters into the querystring
             if(!empty($parameters)) $url .= '?' . $this->buildQuery($parameters);
