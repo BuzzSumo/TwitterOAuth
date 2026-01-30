@@ -15,7 +15,7 @@ class Twitter
     const DEBUG = false;
 
     // url for the twitter-api
-    const API_URL = 'https://api.twitter.com/1.1';
+    const API_URL = 'https://api.twitter.com/2';
     const SECURE_API_URL = 'https://api.twitter.com';
 
     // port for the twitter-api
@@ -750,8 +750,9 @@ class Twitter
         }
 
         // make the call
+        // Note: v2 requires user ID, fetching authenticated user's mentions
         return $this->doCall(
-            'statuses/mentions_timeline.json',
+            'users/me/mentions',
             $parameters, true
         );
     }
@@ -815,8 +816,17 @@ class Twitter
         }
 
         // make the call
+        // v2 uses users/:id/tweets format
+        $endpoint = 'users/';
+        if ($userId != null) {
+            $endpoint .= $userId;
+        } elseif ($screenName != null) {
+            // v2 requires user ID, may need to lookup user first
+            $endpoint .= 'by/username/' . $screenName;
+        }
+        $endpoint .= '/tweets';
         return $this->doCall(
-            'statuses/user_timeline.json',
+            $endpoint,
             $parameters
         );
     }
@@ -865,8 +875,9 @@ class Twitter
         }
 
         // make the call
+        // v2 uses users/:id/timelines/reverse_chronological
         return $this->doCall(
-            'statuses/home_timeline.json',
+            'users/me/timelines/reverse_chronological',
             $parameters, true
         );
     }
@@ -909,8 +920,9 @@ class Twitter
         }
 
         // make the call
+        // Note: [No Replacement Planned] in v2 - this endpoint may not work
         return $this->doCall(
-            'statuses/retweets_of_me.json',
+            'statuses/retweets_of_me',
             $parameters, true
         );
     }
@@ -936,8 +948,9 @@ class Twitter
         }
 
         // make the call
+        // v2 uses tweets/:id/retweeted_by
         return $this->doCall(
-            'statuses/retweets/' . (string) $id . '.json',
+            'tweets/' . (string) $id . '/retweeted_by',
             $parameters
         );
     }
@@ -968,8 +981,9 @@ class Twitter
         }
 
         // make the call
+        // v2 uses tweets/:id format
         return $this->doCall(
-            'statuses/show.json',
+            'tweets/' . (string) $id,
             $parameters, true
         );
     }
@@ -988,9 +1002,10 @@ class Twitter
         if($trimUser !== null) $parameters['trim_user'] = ($trimUser) ? 'true' : 'false';
 
         // make the call
+        // v2 uses DELETE tweets/:id
         return $this->doCall(
-            'statuses/destroy/' . (string) $id . '.json',
-            $parameters, true, 'POST'
+            'tweets/' . (string) $id,
+            $parameters, true, 'DELETE'
         );
     }
 
@@ -1034,8 +1049,11 @@ class Twitter
         }
 
         // make the call
+        // v2 uses POST tweets with 'text' instead of 'status'
+        $parameters['text'] = $parameters['status'];
+        unset($parameters['status']);
         return $this->doCall(
-            'statuses/update.json',
+            'tweets',
             $parameters, true, 'POST'
         );
     }
@@ -1055,8 +1073,10 @@ class Twitter
         }
 
         // make the call
+        // v2 uses POST users/:id/retweets with tweet_id in body
+        $parameters['tweet_id'] = (string) $id;
         return $this->doCall(
-            'statuses/retweet/' . $id . '.json',
+            'users/me/retweets',
             $parameters, true, 'POST'
         );
     }
@@ -1122,8 +1142,9 @@ class Twitter
         }
 
         // make the call
+        // Note: [No Replacement Planned] in v2 - this endpoint may not work
         return $this->doCall(
-            'statuses/oembed.json',
+            'statuses/oembed',
             $parameters
         );
     }
@@ -1179,8 +1200,9 @@ class Twitter
             $parameters['include_entities'] = ($includeEntities) ? 'true' : 'false';
         }
 
+        // v2 uses tweets/search/recent
         return $this->doCall(
-            'search/tweets.json',
+            'tweets/search/recent',
             $parameters
         );
     }
@@ -1266,8 +1288,9 @@ class Twitter
         }
 
         // make the call
+        // v2 uses dm_conversations with different structure
         return $this->doCall(
-            'direct_messages.json',
+            'dm_conversations/with/:participant_id/dm_events',
             $parameters, true
         );
     }
@@ -1307,8 +1330,9 @@ class Twitter
         }
 
         // make the call
+        // v2 DM structure has changed - using dm_conversations
         return $this->doCall(
-            'direct_messages/sent.json',
+            'dm_conversations/dm_events',
             $parameters, true
         );
     }
@@ -1324,8 +1348,9 @@ class Twitter
         $parameters['id'] = (string) $id;
 
         // make the call
+        // v2 uses dm_events/:id
         return $this->doCall(
-            'direct_messages/show.json',
+            'dm_events/' . (string) $id,
             $parameters, true
         );
     }
@@ -1347,9 +1372,12 @@ class Twitter
         }
 
         // make the call
+        // v2 uses DELETE for dm_events/:id
+        $dmId = $parameters['id'];
+        unset($parameters['id']);
         return $this->doCall(
-            'direct_messages/destroy.json',
-            $parameters, true, 'POST'
+            'dm_events/' . $dmId,
+            $parameters, true, 'DELETE'
         );
     }
 
@@ -1380,8 +1408,10 @@ class Twitter
         }
 
         // make the call
+        // v2 uses POST dm_conversations/with/:participant_id/messages
+        $participantId = $userId ?? $screenName;
         return $this->doCall(
-            'direct_messages/new.json',
+            'dm_conversations/with/' . $participantId . '/messages',
             $parameters, true, 'POST'
         );
     }
@@ -1423,7 +1453,18 @@ class Twitter
         }
 
         // make the call
-        return $this->doCall('friends/ids.json', $parameters, true);
+        // v2 uses users/:id/following
+        $endpoint = 'users/';
+        if ($userId != null) {
+            $endpoint .= $userId;
+            unset($parameters['user_id']);
+        } else {
+            // Need to resolve username to ID for v2
+            $endpoint .= 'by/username/' . $screenName;
+            unset($parameters['screen_name']);
+        }
+        $endpoint .= '/following';
+        return $this->doCall($endpoint, $parameters, true);
     }
 
     /**
@@ -1459,7 +1500,18 @@ class Twitter
         $parameters['stringify_ids'] = ((bool) $stringifyIds) ? 'true' : 'false';
 
         // make the call
-        return $this->doCall('followers/ids.json', $parameters, true);
+        // v2 uses users/:id/followers
+        $endpoint = 'users/';
+        if ($userId != null) {
+            $endpoint .= $userId;
+            unset($parameters['user_id']);
+        } else {
+            // Need to resolve username to ID for v2
+            $endpoint .= 'by/username/' . $screenName;
+            unset($parameters['screen_name']);
+        }
+        $endpoint .= '/followers';
+        return $this->doCall($endpoint, $parameters, true);
     }
 
     /**
@@ -1491,7 +1543,8 @@ class Twitter
         }
 
         // make the call
-        return $this->doCall('friendships/lookup.json', $parameters, true);
+        // Note: v2 connection_status endpoint for relationships
+        return $this->doCall('friendships/lookup', $parameters, true);
     }
 
     /**
@@ -1509,8 +1562,9 @@ class Twitter
         $parameters['stringify_ids'] = ((bool) $stringifyIds) ? 'true' : 'false';
 
         // make the call
+        // Note: Part of connection_status in v2
         return $this->doCall(
-            'friendships/incoming.json', $parameters, true
+            'friendships/incoming', $parameters, true
         );
     }
 
@@ -1529,8 +1583,9 @@ class Twitter
         $parameters['stringify_ids'] = ((bool) $stringifyIds) ? 'true' : 'false';
 
         // make the call
+        // Note: Part of connection_status in v2
         return $this->doCall(
-            'friendships/outgoing.json', $parameters, true
+            'friendships/outgoing', $parameters, true
         );
     }
 
@@ -1564,8 +1619,13 @@ class Twitter
         $parameters['follow'] = ($follow) ? 'true' : 'false';
 
         // make the call
+        // v2 uses POST users/:source_user_id/following with target_user_id in body
+        $targetUserId = $userId ?? null;
+        $parameters['target_user_id'] = $targetUserId;
+        if (isset($parameters['user_id'])) unset($parameters['user_id']);
+        if (isset($parameters['screen_name'])) unset($parameters['screen_name']);
         return $this->doCall(
-            'friendships/create.json', $parameters, true, 'POST'
+            'users/me/following', $parameters, true, 'POST'
         );
     }
 
@@ -1594,8 +1654,10 @@ class Twitter
         }
 
         // make the call
+        // v2 uses DELETE users/:source_user_id/following/:target_user_id
+        $targetUserId = $userId ?? 'unknown';
         return $this->doCall(
-            'friendships/destroy.json', $parameters, true, 'POST'
+            'users/me/following/' . $targetUserId, $parameters, true, 'DELETE'
         );
     }
 
@@ -1633,8 +1695,9 @@ class Twitter
         }
 
         // make the call
+        // Note: [No Replacement Planned] in v2
         return $this->doCall(
-            'friendships/update.json', $parameters, true, 'POST'
+            'friendships/update', $parameters, true, 'POST'
         );
     }
 
@@ -1674,7 +1737,8 @@ class Twitter
         }
 
         // make the call
-        return $this->doCall('friendships/show.json', $parameters);
+        // Note: Part of connection_status in v2
+        return $this->doCall('friendships/show', $parameters);
     }
 
     /**
@@ -1717,8 +1781,18 @@ class Twitter
         }
 
         // make the call
+        // v2 uses users/:id/following
+        $endpoint = 'users/';
+        if ($userId != null) {
+            $endpoint .= $userId;
+            unset($parameters['user_id']);
+        } else {
+            $endpoint .= 'by/username/' . $screenName;
+            unset($parameters['screen_name']);
+        }
+        $endpoint .= '/following';
         return $this->doCall(
-            'friends/list.json', $parameters, true
+            $endpoint, $parameters, true
         );
     }
 
@@ -1762,8 +1836,18 @@ class Twitter
         }
 
         // make the call
+        // v2 uses users/:id/followers
+        $endpoint = 'users/';
+        if ($userId != null) {
+            $endpoint .= $userId;
+            unset($parameters['user_id']);
+        } else {
+            $endpoint .= 'by/username/' . $screenName;
+            unset($parameters['screen_name']);
+        }
+        $endpoint .= '/followers';
         return $this->doCall(
-            'followers/list.json', $parameters, true
+            $endpoint, $parameters, true
         );
     }
 
@@ -1776,8 +1860,9 @@ class Twitter
     public function accountSettings()
     {
         // make the call
+        // Note: Account settings endpoints are not in v2
         return $this->doCall(
-            'account/settings.json', null, true
+            'account/settings', null, true
         );
     }
 
@@ -1802,8 +1887,9 @@ class Twitter
         }
 
         // make the call
+        // v2 uses users/me to get authenticated user info
         return $this->doCall(
-            'account/verify_credentials.json', $parameters, true
+            'users/me', $parameters, true
         );
     }
 
@@ -1849,8 +1935,9 @@ class Twitter
         }
 
         // make the call
+        // Note: Account settings endpoints are not in v2
         return $this->doCall(
-            'account/settings.json', $parameters, true, 'POST'
+            'account/settings', $parameters, true, 'POST'
         );
     }
 
@@ -1872,8 +1959,9 @@ class Twitter
         }
 
         // make the call
+        // Note: [No Replacement Planned] in v2
         return $this->doCall(
-            'account/update_delivery_device.json', $parameters, true, 'POST'
+            'account/update_delivery_device', $parameters, true, 'POST'
         );
     }
 
@@ -1912,8 +2000,9 @@ class Twitter
         }
 
         // make the call
+        // Note: [No Replacement Planned] in v2
         return $this->doCall(
-            'account/update_profile.json', $parameters, true, 'POST'
+            'account/update_profile', $parameters, true, 'POST'
         );
     }
 
@@ -1940,8 +2029,9 @@ class Twitter
         }
 
         // make the call
+        // Note: [No Replacement Planned] in v2
         return $this->doCall(
-            'account/update_profile_background_image.json',
+            'account/update_profile_background_image',
             $parameters, true, 'POST', $image
         );
     }
@@ -1994,8 +2084,9 @@ class Twitter
         }
 
         // make the call
+        // Note: [No Replacement Planned] in v2
         return $this->doCall(
-            'account/update_profile_colors.json', $parameters, true, 'POST'
+            'account/update_profile_colors', $parameters, true, 'POST'
         );
     }
 
@@ -2020,8 +2111,9 @@ class Twitter
         }
 
         // make the call
+        // Note: [No Replacement Planned] in v2
         return $this->doCall(
-            'account/update_profile_image.json',
+            'account/update_profile_image',
             $parameters, true, 'POST', $image
         );
     }
@@ -2050,8 +2142,9 @@ class Twitter
         }
 
         // make the call
+        // v2 uses users/:id/blocking
         return $this->doCall(
-            'blocks/list.json', $parameters, true
+            'users/me/blocking', $parameters, true
         );
     }
 
@@ -2074,8 +2167,9 @@ class Twitter
         }
 
         // make the call
+        // v2 uses users/:id/blocking (same as list)
         return $this->doCall(
-            'blocks/ids.json', $parameters, true
+            'users/me/blocking', $parameters, true
         );
     }
 
@@ -2113,8 +2207,12 @@ class Twitter
         }
 
         // make the call
+        // v2 uses POST users/:id/blocking with target_user_id in body
+        $parameters['target_user_id'] = $userId ?? null;
+        if (isset($parameters['user_id'])) unset($parameters['user_id']);
+        if (isset($parameters['screen_name'])) unset($parameters['screen_name']);
         return $this->doCall(
-            'blocks/create.json', $parameters, true, 'POST'
+            'users/me/blocking', $parameters, true, 'POST'
         );
     }
 
@@ -2149,8 +2247,10 @@ class Twitter
         }
 
         // make the call
+        // v2 uses DELETE users/:source_user_id/blocking/:target_user_id
+        $targetUserId = $userId ?? 'unknown';
         return $this->doCall(
-            'blocks/destroy.json', $parameters, true, 'POST'
+            'users/me/blocking/' . $targetUserId, $parameters, true, 'DELETE'
         );
     }
 
@@ -2188,7 +2288,16 @@ class Twitter
         }
 
         // make the call
-        return $this->doCall('users/lookup.json', $parameters, true);
+        // v2 uses GET users with ids or usernames parameter
+        if (!empty($userIds)) {
+            $parameters['ids'] = $parameters['user_id'];
+            unset($parameters['user_id']);
+        }
+        if (!empty($screenNames)) {
+            $parameters['usernames'] = $parameters['screen_name'];
+            unset($parameters['screen_name']);
+        }
+        return $this->doCall('users', $parameters, true);
 
     }
 
@@ -2223,7 +2332,16 @@ class Twitter
         }
 
         // make the call
-        return $this->doCall('users/show.json', $parameters);
+        // v2 uses users/:id or users/by/username/:username
+        $endpoint = 'users/';
+        if ($userId != null) {
+            $endpoint .= $userId;
+            unset($parameters['user_id']);
+        } elseif ($screenName != null) {
+            $endpoint .= 'by/username/' . $screenName;
+            unset($parameters['screen_name']);
+        }
+        return $this->doCall($endpoint, $parameters);
     }
 
     /**
@@ -2249,7 +2367,10 @@ class Twitter
         }
 
         // make the call
-        return $this->doCall('users/search.json', $parameters, true);
+        // v2 uses users/by with query parameter
+        $parameters['query'] = $parameters['q'];
+        unset($parameters['q']);
+        return $this->doCall('users/by', $parameters, true);
     }
 
     /**
@@ -2287,7 +2408,7 @@ class Twitter
 
         // make the call
         return $this->doCall(
-            'users/contributees.json', $parameters
+            'users/contributees', $parameters
         );
     }
 
@@ -2326,7 +2447,7 @@ class Twitter
 
         // make the call
         return $this->doCall(
-            'users/contributors.json', $parameters
+            'users/contributors', $parameters
         );
     }
 
@@ -2338,7 +2459,7 @@ class Twitter
     public function accountRemoveProfileBanner()
     {
         $return = (array) $this->doCall(
-            'account/remove_profile_banner.json', null, true, 'POST',
+            'account/remove_profile_banner', null, true, 'POST',
             null, false, true
         );
 
@@ -2373,7 +2494,7 @@ class Twitter
         if($screenName != null) $parameters['screen_name'] = (string) $screenName;
 
         return $this->doCall(
-            'users/profile_banner.json',
+            'users/profile_banner',
             $parameters, true
         );
     }
@@ -2393,7 +2514,7 @@ class Twitter
         if($lang != null) $parameters['lang'] = (string) $lang;
 
         return $this->doCall(
-            'users/suggestions/' . (string) $slug . '.json',
+            'users/suggestions/' . (string) $slug,
             $parameters, true
         );
     }
@@ -2410,7 +2531,7 @@ class Twitter
         if($lang != null) $parameters['lang'] = (string) $lang;
 
         return $this->doCall(
-            'users/suggestions.json',
+            'users/suggestions',
             $parameters, true
         );
     }
@@ -2424,7 +2545,7 @@ class Twitter
     public function usersSuggestionsSlugMembers($slug)
     {
         return $this->doCall(
-            'users/suggestions/' . (string) $slug . '/members.json',
+            'users/suggestions/' . (string) $slug . '/members',
             null, true
         );
     }
@@ -2462,7 +2583,17 @@ class Twitter
         }
 
         // make the call
-        return $this->doCall('favorites/list.json', $parameters, true);
+        // v2 uses users/:id/liked_tweets
+        $endpoint = 'users/';
+        if ($userId != null) {
+            $endpoint .= $userId;
+            unset($parameters['user_id']);
+        } else {
+            $endpoint .= 'by/username/' . $screenName;
+            unset($parameters['screen_name']);
+        }
+        $endpoint .= '/liked_tweets';
+        return $this->doCall($endpoint, $parameters, true);
     }
 
     /**
@@ -2482,8 +2613,11 @@ class Twitter
         }
 
         // make the call
+        // v2 uses DELETE users/:id/likes/:tweet_id
+        $tweetId = $parameters['id'];
+        unset($parameters['id']);
         return $this->doCall(
-            'favorites/destroy.json', $parameters, true, 'POST'
+            'users/me/likes/' . $tweetId, $parameters, true, 'DELETE'
         );
     }
 
@@ -2504,8 +2638,11 @@ class Twitter
         }
 
         // make the call
+        // v2 uses POST users/:id/likes with tweet_id in body
+        $parameters['tweet_id'] = $parameters['id'];
+        unset($parameters['id']);
         return $this->doCall(
-            'favorites/create.json', $parameters, true, 'POST'
+            'users/me/likes', $parameters, true, 'POST'
         );
     }
 
@@ -2535,11 +2672,44 @@ class Twitter
     }
 
     /**
-     * Not implemented yet
+     * Returns the lists the specified user has been added to.
+     *
+     * @param  string[optional] $userId          The ID of the user for whom to return results for.
+     * @param  string[optional] $screenName      The screen name of the user for whom to return results for.
+     * @param  int[optional]    $maxResults      The maximum number of results (v2 max_results).
+     * @param  string[optional] $paginationToken Token for pagination (v2 pagination_token).
+     * @return array
      */
-    public function listsMemberships()
+    public function listsMemberships(
+        $userId = null, $screenName = null, $maxResults = null,
+        $paginationToken = null
+    )
     {
-        throw new Exception('Not implemented');
+        // validate
+        if ($userId == '' && $screenName == '') {
+            throw new Exception('Specify an userId or a screenName.');
+        }
+
+        // build parameters
+        $parameters = null;
+        if ($maxResults !== null) {
+            $parameters['max_results'] = (int) $maxResults;
+        }
+        if ($paginationToken !== null) {
+            $parameters['pagination_token'] = (string) $paginationToken;
+        }
+
+        // build endpoint
+        $endpoint = 'users/';
+        if ($userId != null) {
+            $endpoint .= $userId;
+        } else {
+            $endpoint .= 'by/username/' . $screenName;
+        }
+        $endpoint .= '/list_memberships';
+
+        // make the call
+        return $this->doCall($endpoint, $parameters, true);
     }
 
     /**
@@ -2663,7 +2833,7 @@ class Twitter
     public function savedSearchesList()
     {
         // make the call
-        return $this->doCall('saved_searches/list.json', null, true);
+        return $this->doCall('saved_searches/list', null, true);
     }
 
     /**
@@ -2676,7 +2846,7 @@ class Twitter
     {
         // make the call
         return $this->doCall(
-            'saved_searches/show/' . (string) $id . '.json', null, true
+            'saved_searches/show/' . (string) $id, null, true
         );
     }
 
@@ -2693,7 +2863,7 @@ class Twitter
 
         // make the call
         return $this->doCall(
-            'saved_searches/create.json', $parameters, true, 'POST'
+            'saved_searches/create', $parameters, true, 'POST'
         );
     }
 
@@ -2706,7 +2876,7 @@ class Twitter
     public function savedSearchesDestroy($id)
     {
         return $this->doCall(
-            'saved_searches/destroy/' . (string) $id . '.json',
+            'saved_searches/destroy/' . (string) $id,
             null, true, 'POST'
         );
     }
@@ -2725,7 +2895,7 @@ class Twitter
 
         // make the call
         return $this->doCall(
-            'geo/id/' . (string) $id . '.json', $parameters
+            'geo/id/' . (string) $id, $parameters
         );
     }
 
@@ -2758,7 +2928,7 @@ class Twitter
         }
 
         // make the call
-        return $this->doCall('geo/reverse_geocode.json', $parameters);
+        return $this->doCall('geo/reverse_geocode', $parameters);
     }
 
     /**
@@ -2816,7 +2986,7 @@ class Twitter
         }
 
         // make the call
-        return $this->doCall('geo/search.json', $parameters);
+        return $this->doCall('geo/search', $parameters);
     }
 
     /**
@@ -2849,7 +3019,7 @@ class Twitter
         }
 
         // make the call
-        return $this->doCall('geo/similar_places.json', $parameters);
+        return $this->doCall('geo/similar_places', $parameters);
     }
 
     /**
@@ -2881,7 +3051,7 @@ class Twitter
 
         // make the call
         return $this->doCall(
-            'geo/create.json', $parameters, true, 'POST'
+            'geo/create', $parameters, true, 'POST'
         );
     }
 
@@ -2904,7 +3074,7 @@ class Twitter
         }
 
         return $this->doCall(
-            'trends/place.json',
+            'trends/place',
             $parameters
         );
     }
@@ -2926,7 +3096,7 @@ class Twitter
         if($long != null) $parameters['long_for_trends'] = (float) $long;
 
         // make the call
-        return $this->doCall('trends/available.json', $parameters);
+        return $this->doCall('trends/available', $parameters);
     }
 
     /**
@@ -2945,7 +3115,7 @@ class Twitter
         if($long != null) $parameters['long'] = (float) $long;
 
         // make the call
-        return $this->doCall('trends/closest.json', $parameters);
+        return $this->doCall('trends/closest', $parameters);
     }
 
 // Spam Reporting resources
@@ -2973,7 +3143,7 @@ class Twitter
 
         // make the call
         return $this->doCall(
-            'users/report_spam.json',
+            'users/report_spam',
             $parameters, true, 'POST'
         );
     }
@@ -3093,7 +3263,7 @@ class Twitter
     {
         // make the call
         return $this->doCall(
-            'help/configuration.json'
+            'help/configuration'
         );
     }
 
@@ -3106,7 +3276,7 @@ class Twitter
     {
         // make the call
         return $this->doCall(
-            'help/languages.json'
+            'help/languages'
         );
     }
 
@@ -3119,7 +3289,7 @@ class Twitter
     {
         // make the call
         return $this->doCall(
-            'help/privacy.json'
+            'help/privacy'
         );
     }
 
@@ -3132,7 +3302,7 @@ class Twitter
     {
         // make the call
         return $this->doCall(
-            'help/tos.json'
+            'help/tos'
         );
     }
 
@@ -3154,7 +3324,7 @@ class Twitter
 
         // make the call
         return $this->doCall(
-            'application/rate_limit_status.json',
+            'application/rate_limit_status',
             $parameters
         );
     }
