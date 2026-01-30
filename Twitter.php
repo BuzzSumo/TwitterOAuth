@@ -1892,13 +1892,8 @@ class Twitter
     )
     {
         // build parameters
+        // v2 users/me only accepts: expansions, tweet.fields, user.fields
         $parameters = null;
-        if ($includeEntities !== null) {
-            $parameters['include_entities'] = ($includeEntities) ? 'true' : 'false';
-        }
-        if ($skipStatus !== null) {
-            $parameters['skip_status'] = ($skipStatus) ? 'true' : 'false';
-        }
 
         // make the call
         // v2 uses users/me to get authenticated user info
