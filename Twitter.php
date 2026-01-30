@@ -554,10 +554,176 @@ class Twitter
             throw new Exception($json['error']);
         }
 
+        // normalize v2 response: unwrap 'data' key and map field names
+        $json = $this->normalizeV2Response($json);
+
         // return
         if ($this->returnAsArray)
             return (array) $json;
         return $json;
+    }
+
+    /**
+     * Normalize a v2 API response for backward compatibility with v1.1 consumers.
+     * - Unwraps the 'data' key
+     * - Maps 'username' to 'screen_name'
+     * - Maps 'text' to 'full_text' on tweet objects
+     * - Maps 'public_metrics' counts to top-level v1.1 field names
+     *
+     * @param  mixed $response
+     * @return mixed
+     */
+    protected function normalizeV2Response($response)
+    {
+        if ($this->returnAsArray) {
+            return $this->normalizeV2Array($response);
+        }
+        return $this->normalizeV2Object($response);
+    }
+
+    /**
+     * Normalize v2 response when returning as array
+     *
+     * @param  array $response
+     * @return array
+     */
+    private function normalizeV2Array($response)
+    {
+        if (!is_array($response) || !isset($response['data'])) {
+            return $response;
+        }
+
+        $data = $response['data'];
+
+        // single object (e.g. users/me, tweets/:id)
+        if (is_array($data) && !isset($data[0])) {
+            $data = $this->normalizeV2UserArray($data);
+            $data = $this->normalizeV2TweetArray($data);
+            return $data;
+        }
+
+        // array of objects (e.g. users/:id/following, users/:id/tweets)
+        if (is_array($data) && isset($data[0])) {
+            foreach ($data as &$item) {
+                if (is_array($item)) {
+                    $item = $this->normalizeV2UserArray($item);
+                    $item = $this->normalizeV2TweetArray($item);
+                }
+            }
+            unset($item);
+        }
+
+        return $data;
+    }
+
+    /**
+     * Normalize v2 response when returning as object
+     *
+     * @param  object $response
+     * @return mixed
+     */
+    private function normalizeV2Object($response)
+    {
+        if (!is_object($response) || !isset($response->data)) {
+            return $response;
+        }
+
+        $data = $response->data;
+
+        // single object
+        if (is_object($data)) {
+            $this->normalizeV2UserObject($data);
+            $this->normalizeV2TweetObject($data);
+            return $data;
+        }
+
+        // array of objects
+        if (is_array($data)) {
+            foreach ($data as $item) {
+                if (is_object($item)) {
+                    $this->normalizeV2UserObject($item);
+                    $this->normalizeV2TweetObject($item);
+                }
+            }
+        }
+
+        return $data;
+    }
+
+    /**
+     * Map v2 user fields to v1.1 equivalents (array mode)
+     */
+    private function normalizeV2UserArray($item)
+    {
+        if (isset($item['username']) && !isset($item['screen_name'])) {
+            $item['screen_name'] = $item['username'];
+        }
+        if (isset($item['public_metrics']) && is_array($item['public_metrics'])) {
+            $m = $item['public_metrics'];
+            if (isset($m['followers_count'])) $item['followers_count'] = $m['followers_count'];
+            if (isset($m['following_count'])) $item['friends_count'] = $m['following_count'];
+            if (isset($m['tweet_count']))     $item['statuses_count'] = $m['tweet_count'];
+            if (isset($m['listed_count']))    $item['listed_count'] = $m['listed_count'];
+        }
+        return $item;
+    }
+
+    /**
+     * Map v2 tweet fields to v1.1 equivalents (array mode)
+     */
+    private function normalizeV2TweetArray($item)
+    {
+        if (isset($item['text']) && !isset($item['full_text'])) {
+            $item['full_text'] = $item['text'];
+        }
+        if (isset($item['author_id']) && !isset($item['user_id'])) {
+            $item['user_id'] = $item['author_id'];
+        }
+        if (isset($item['public_metrics']) && is_array($item['public_metrics'])) {
+            $m = $item['public_metrics'];
+            if (isset($m['retweet_count'])) $item['retweet_count'] = $m['retweet_count'];
+            if (isset($m['reply_count']))   $item['reply_count'] = $m['reply_count'];
+            if (isset($m['like_count']))    $item['favorite_count'] = $m['like_count'];
+            if (isset($m['quote_count']))   $item['quote_count'] = $m['quote_count'];
+        }
+        return $item;
+    }
+
+    /**
+     * Map v2 user fields to v1.1 equivalents (object mode)
+     */
+    private function normalizeV2UserObject($item)
+    {
+        if (isset($item->username) && !isset($item->screen_name)) {
+            $item->screen_name = $item->username;
+        }
+        if (isset($item->public_metrics)) {
+            $m = $item->public_metrics;
+            if (isset($m->followers_count)) $item->followers_count = $m->followers_count;
+            if (isset($m->following_count)) $item->friends_count = $m->following_count;
+            if (isset($m->tweet_count))     $item->statuses_count = $m->tweet_count;
+            if (isset($m->listed_count))    $item->listed_count = $m->listed_count;
+        }
+    }
+
+    /**
+     * Map v2 tweet fields to v1.1 equivalents (object mode)
+     */
+    private function normalizeV2TweetObject($item)
+    {
+        if (isset($item->text) && !isset($item->full_text)) {
+            $item->full_text = $item->text;
+        }
+        if (isset($item->author_id) && !isset($item->user_id)) {
+            $item->user_id = $item->author_id;
+        }
+        if (isset($item->public_metrics)) {
+            $m = $item->public_metrics;
+            if (isset($m->retweet_count)) $item->retweet_count = $m->retweet_count;
+            if (isset($m->reply_count))   $item->reply_count = $m->reply_count;
+            if (isset($m->like_count))    $item->favorite_count = $m->like_count;
+            if (isset($m->quote_count))   $item->quote_count = $m->quote_count;
+        }
     }
 
     /**
@@ -800,33 +966,25 @@ class Twitter
         }
 
         // build parameters
+        // v2 accepts: since_id, until_id, max_results, pagination_token, exclude,
+        //             start_time, end_time, tweet.fields, expansions, media.fields,
+        //             poll.fields, user.fields, place.fields
         $parameters = null;
-        if ($userId != null) {
-            $parameters['user_id'] = (string) $userId;
-        }
-        if ($screenName != null) {
-            $parameters['screen_name'] = (string) $screenName;
-        }
         if ($sinceId != null) {
             $parameters['since_id'] = (string) $sinceId;
         }
         if ($count != null) {
-            $parameters['count'] = (int) $count;
+            $parameters['max_results'] = (int) $count;
         }
         if ($maxId != null) {
-            $parameters['max_id'] = (string) $maxId;
+            $parameters['until_id'] = (string) $maxId;
         }
-        if ($trimUser !== null) {
-            $parameters['trim_user'] = ($trimUser) ? 'true' : 'false';
+        if ($excludeReplies) {
+            $parameters['exclude'] = 'replies';
         }
-        if ($excludeReplies !== null) {
-            $parameters['exclude_replies'] = ($excludeReplies) ? 'true' : 'false';
-        }
-        if ($contributorDetails !== null) {
-            $parameters['contributor_details'] = ($contributorDetails) ? 'true' : 'false';
-        }
-        if ($includeRts !== null) {
-            $parameters['include_rts'] = ($includeRts) ? 'true' : 'false';
+        if ($includeRts === false) {
+            $exclude = isset($parameters['exclude']) ? $parameters['exclude'] . ',retweets' : 'retweets';
+            $parameters['exclude'] = $exclude;
         }
 
         // make the call
@@ -835,7 +993,6 @@ class Twitter
         if ($userId != null) {
             $endpoint .= $userId;
         } elseif ($screenName != null) {
-            // v2 requires user ID, may need to lookup user first
             $endpoint .= 'by/username/' . $screenName;
         }
         $endpoint .= '/tweets';
@@ -1452,18 +1609,10 @@ class Twitter
         }
 
         // build parameters
+        // v2 /following accepts: max_results, pagination_token, user.fields, expansions, tweet.fields
         $parameters = null;
-        if ($userId != null) {
-            $parameters['user_id'] = (string) $userId;
-        }
-        if ($screenName != null) {
-            $parameters['screen_name'] = (string) $screenName;
-        }
         if ($cursor != null) {
-            $parameters['cursor'] = (string) $cursor;
-        }
-        if ($stringifyIds !== null) {
-            $parameters['stringify_ids'] = ((bool) $stringifyIds) ? 'true' : 'false';
+            $parameters['pagination_token'] = (string) $cursor;
         }
 
         // make the call
@@ -1471,11 +1620,8 @@ class Twitter
         $endpoint = 'users/';
         if ($userId != null) {
             $endpoint .= $userId;
-            unset($parameters['user_id']);
         } else {
-            // Need to resolve username to ID for v2
             $endpoint .= 'by/username/' . $screenName;
-            unset($parameters['screen_name']);
         }
         $endpoint .= '/following';
         return $this->doCall($endpoint, $parameters, true);
@@ -2285,28 +2431,19 @@ class Twitter
         }
 
         // build parameters
+        // v2 accepts: ids (or usernames), user.fields, expansions, tweet.fields
         $parameters = null;
         if (!empty($userIds)) {
-            $parameters['user_id'] = implode(',', $userIds);
+            $parameters['ids'] = implode(',', $userIds);
         }
         if (!empty($screenNames)) {
-            $parameters['screen_name'] = implode(',', $screenNames);
-        }
-        if ($includeEntities !== null) {
-            $parameters['include_entities'] = ($includeEntities) ? 'true' : 'false';
+            $parameters['usernames'] = implode(',', $screenNames);
         }
 
         // make the call
-        // v2 uses GET users with ids or usernames parameter
-        if (!empty($userIds)) {
-            $parameters['ids'] = $parameters['user_id'];
-            unset($parameters['user_id']);
-        }
-        if (!empty($screenNames)) {
-            $parameters['usernames'] = $parameters['screen_name'];
-            unset($parameters['screen_name']);
-        }
-        return $this->doCall('users', $parameters, true);
+        // v2 uses GET /users (by ids) or GET /users/by (by usernames)
+        $endpoint = !empty($screenNames) ? 'users/by' : 'users';
+        return $this->doCall($endpoint, $parameters, true);
 
     }
 
